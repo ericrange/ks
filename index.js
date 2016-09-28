@@ -44,52 +44,99 @@ class KS {
     };
   }
 
-  constructor(sDist, fDistType = KS.Distribution.Normal, fDistParams = {}, alpha) {
-    this.sDist = sDist;
+  constructor(observations, fDistType = KS.Distribution.Normal, fDistParams = {}, alpha) {
+    this.sDist = [];
     this.fDist = [];
     this.fDistType = fDistType;
     this.fDistParams = fDistParams;
     this.alpha = alpha;
-    for (let i = 0; i < sDist.length; i++) {
-      this.fDist[i] = this.f(i);
+
+    if (this.fDistType === KS.Distribution.Normal) {
+      observations.forEach((observation, index) => {
+        this.sDist.push(this.cdf(observation));
+        this.fDist.push(this.f(observation));
+      });
     }
   }
 
   test() {
-    const dAlpha =
+    let pass = true;
+    const dmax =
       Math.sqrt(-0.5 * Math.log(this.alpha / 2)) /
       Math.sqrt(this.sDist.length);
 
     let distances = [];
     for (let i = 0; i < this.sDist.length; i++) {
       distances[i] = Math.abs(this.sDist[i] - this.fDist[i]);
+      if (distances[i] > dmax) {
+        pass = false;
+      }
     }
 
     return {
-
+      dmax,
+      distances,
+      pass
     };
   }
 
   f(x) {
     if (this.fDistType === KS.Distribution.Normal) {
-      return this.z((x - this.fDistParams.mean) / Math.sqrt(this.fDistParams.variance));
+      return this.z((x - this.fDistParams.mean) /
+        this.fDistParams.standardDeviation);
     }
   }
 
   z(value) {
+    if (value > 3.49) {
+      return 1;
+    } else if (value < -3.49) {
+      return 0;
+    }
+
     let absValue = Math.abs(value).toFixed(2);
-    let row = absValue[3];
-    let zValue = zTable[absValue.substring(0, 3)][row];
+    let zValue = zTable[absValue.substring(0, 3)][absValue[3]];
     return value < 0 ? 1 - zValue : zValue;
+  }
+
+  /* https://de.wikipedia.org/wiki/Fehlerfunktion */
+  erfc(x) {
+    let z = Math.abs(x);
+    let t = 1 / (1 + z / 2);
+    let r = t * Math.exp(-z * z - 1.26551223 + t * (1.00002368 + t * (0.37409196 + t * (0.09678418 + t * (-0.18628806 + t * (0.27886807 + t * (-1.13520398 + t * (1.48851587 + t * (-0.82215223 + t * 0.17087277)))))))));
+    return x >= 0 ? r : 2 - r;
+  }
+
+  cdf(x) {
+    let mean = observationMean;
+    let standardDeviation = observationstdDeviation;
+    return 0.5 * this.erfc(-(x - mean) / (standardDeviation * Math.sqrt(2)));
   }
 
 }
 
-const sDist = [0.07, 0.23, 0.50, 0.76, 0.92, 0.98];
+/* Example data. */
+const observations = [20, 15, 26, 32, 18, 28, 35, 14, 26, 22, 17, 20, 15, 26, 32, 18, 28, 35, 14, 26, 22, 17].sort();
+const observationMean = observations.reduce((sum, value) => {
+  return sum + value;
+}, 0) / observations.length;
+
+const observationstdDeviation = Math.sqrt(observations
+  .map(value => {
+    let diff = value - observationMean;
+    return diff * diff;
+  })
+  .reduce((sum, value) => {
+    return sum + value
+  }) / observations.length);
+
+console.log(`mean: ${observationMean}`);
+console.log(`stdDev: ${observationstdDeviation}`);
+
 const sDistParams = {
-  mean: 2,
-  variance: 2
+  mean: 20,
+  standardDeviation: 10
 };
 
-let ks = new KS(sDist, KS.Distribution.Normal, sDistParams, 0.05);
-ks.test();
+let ks = new KS(observations, KS.Distribution.Normal, sDistParams, 0.05);
+console.log(ks.test());
